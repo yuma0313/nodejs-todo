@@ -1,4 +1,6 @@
 import express from "express";
+import mysql from "mysql2/promise";
+import { dbConfig } from "./mysql.config";
 
 const app = express();
 
@@ -10,55 +12,73 @@ type Todo = {
 
 app.use(express.json());
 
-const todos: Todo[] = [
-  { id: 1, title: "todo1", done: false },
-  { id: 2, title: "todo2", done: false },
-];
+const pool = mysql.createPool(dbConfig);
 
-app.get("/", (req, res) => {
-  res.send(todos);
+app.get("/", async (req, res) => {
+  try {
+    const [rows] = await pool.query("SELECT * FROM todos");
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: "データベースエラー" });
+  }
 });
 
-app.get("/:id", (req, res) => {
-  const todo = todos.find((todo) => todo.id === Number(req.params.id));
-  res.send(todo);
-});
+app.get("/:id", async (req, res) => {
+  console.log("id", req.params.id);
 
-app.post("/", (req, res) => {
-  const newTodo: Todo = {
-    id: todos.length + 1,
-    title: req.body.title,
-    done: false,
-  };
-  todos.push(newTodo);
-  res.send(todos);
-});
+  try {
+    const [rows] = await pool.query("SELECT * FROM todos WHERE id = ?", [
+      req.params.id,
+    ]);
 
-app.put("/:id", (req, res) => {
-  const updatedTodos: Todo[] = todos.map((todo) => {
-    if (todo.id === Number(req.params.id)) {
-      return { ...todo, title: req.body.title, done: req.body.done };
+    console.log("rows", rows);
+
+    if (Array.isArray(rows)) {
+      if (rows.length === 0) {
+        return res.status(404).json({ error: "Todo not found" });
+      }
+      res.json(rows[0]);
+    } else {
+      return res.status(500).json({ error: "Unexpected query result" });
     }
-    return todo;
-  });
-  res.send(updatedTodos);
+  } catch (error) {
+    res.status(500).json({ error: "データベースエラー" });
+  }
 });
 
-app.put("/done-todo/:id", (req, res) => {
-  const updatedTodos: Todo[] = todos.map((todo) => {
-    if (todo.id === Number(req.params.id)) {
-      return { ...todo, done: true };
-    }
-    return todo;
-  });
-  res.send(updatedTodos);
+app.post("/", async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      "INSERT INTO todos (title, done) VALUES (?, ?)",
+      [req.body.title, req.body.done]
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: "データベースエラー" });
+  }
 });
 
-app.delete("/:id", (req, res) => {
-  const deletedTodos: Todo[] = todos.filter(
-    (todo) => todo.id !== Number(req.params.id)
-  );
-  res.send(deletedTodos);
+app.put("/:id", async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      "UPDATE todos SET title = ?, done = ? WHERE id = ?",
+      [req.body.title, req.body.done, req.params.id]
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: "データベースエラー" });
+  }
+});
+
+app.delete("/:id", async (req, res) => {
+  try {
+    const [rows] = await pool.query("DELETE FROM todos WHERE id = ?", [
+      req.params.id,
+    ]);
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: "データベースエラー" });
+  }
 });
 
 app.listen(3000, () => {
